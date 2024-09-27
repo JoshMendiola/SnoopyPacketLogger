@@ -1,38 +1,56 @@
 import os
+import json
 from flask import Flask, request, Response
 import requests
-import logging
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+import logging
 
 app = Flask(__name__)
 
-# Configure logging
-logging.basicConfig(filename='/var/log/nginx/packet_logger.log', level=logging.INFO,
-                    format='%(message)s')
+# Configure logging with rotation
+log_file = '/var/log/nginx/packet_logger.log'
+log_handler = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
+log_handler.setLevel(logging.INFO)
+app.logger.addHandler(log_handler)
+app.logger.setLevel(logging.INFO)
 
 NGINX_SERVER = "http://nginx:80"
 
 
-def log_request(req):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    client_ip = req.remote_addr
-    method = req.method
-    path = req.full_path
-    headers = dict(req.headers)
-    body = req.get_data(as_text=True)
+def log_entry(entry_type, data):
+    timestamp = datetime.now().isoformat()
+    log_data = {
+        "timestamp": timestamp,
+        "type": entry_type,
+        **data
+    }
+    app.logger.info(json.dumps(log_data))
 
-    log_entry = f"{timestamp} - REQUEST - IP: {client_ip}, Method: {method}, Path: {path}, Headers: {headers}, Body: {body}"
-    logging.info(log_entry)
+
+def log_request(req):
+    headers = dict(req.headers)
+    body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
+    log_entry("REQUEST", {
+        "ip": req.remote_addr,
+        "method": req.method,
+        "path": req.full_path,
+        "headers": headers,
+        "body": body
+    })
 
 
 def log_response(resp):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    status_code = resp.status_code
     headers = dict(resp.headers)
-    body = resp.text
-
-    log_entry = f"{timestamp} - RESPONSE - Status: {status_code}, Headers: {headers}, Body: {body}"
-    logging.info(log_entry)
+    content_type = headers.get('Content-Type', '')
+    body = None
+    if 'text/html' not in content_type:
+        body = resp.text[:1000] if len(resp.text) > 1000 else resp.text
+    log_entry("RESPONSE", {
+        "status_code": resp.status_code,
+        "headers": headers,
+        "body": body
+    })
 
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])

@@ -4,9 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9ca70254-ee3d-4b6a-886b-22e36f09aaa7" name="Changes" comment="initial commit">
+    <list default="true" id="9ca70254-ee3d-4b6a-886b-22e36f09aaa7" name="Changes" comment="changed name of main">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -72,7 +72,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1727402064103</updated>
-      <workItem from="1727402065451" duration="1717000" />
+      <workItem from="1727402065451" duration="2232000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -82,7 +82,15 @@
       <option name="project" value="LOCAL" />
       <updated>1727402348701</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="changed name of main">
+      <option name="closed" value="true" />
+      <created>1727404164401</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1727404164401</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -90,6 +98,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="initial commit" />
-    <option name="LAST_COMMIT_MESSAGE" value="initial commit" />
+    <MESSAGE value="changed name of main" />
+    <option name="LAST_COMMIT_MESSAGE" value="changed name of main" />
   </component>
 </project>

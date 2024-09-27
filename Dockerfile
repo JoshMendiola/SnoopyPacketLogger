@@ -7,4 +7,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+RUN mkdir -p /app/utils
+
+COPY utils/clear_logs.sh /app/utils/clear_logs.sh
+RUN chmod +x /app/utils/clear_logs.sh
+
 CMD ["python", "app.py"]

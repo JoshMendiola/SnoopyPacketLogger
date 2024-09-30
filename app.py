@@ -5,8 +5,12 @@ import requests
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 import logging
+from flask_socketio import SocketIO
 
 app = Flask(__name__)
+
+# Initialize SocketIO
+socketio = SocketIO(app)
 
 # Configure logging with rotation
 log_file = '/var/log/nginx/packet_logger.log'
@@ -25,7 +29,11 @@ def log_entry(entry_type, data):
         "type": entry_type,
         **data
     }
-    app.logger.info(json.dumps(log_data))
+    log_message = json.dumps(log_data)
+    app.logger.info(log_message)
+
+    # Emit the log message to any connected WebSocket clients
+    socketio.emit('log', log_message)
 
 
 def log_request(req):
@@ -75,6 +83,16 @@ def proxy(path):
     response = Response(resp.content, resp.status_code, headers)
     return response
 
+# WebSocket handler (optional)
+@socketio.on('connect')
+def handle_connect():
+    print('WebSocket client connected')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('WebSocket client disconnected')
+
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    # app.run(host='0.0.0.0', port=5000)
+    socketio.run(app, host='0.0.0.0', port=5000)

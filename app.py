@@ -16,9 +16,14 @@ socketio = SocketIO(app)
 log_file = '/var/log/nginx/packet_logger.log'
 log_handler = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
 log_handler.setLevel(logging.INFO)
+
+# Remove default StreamHandler (console logging)
+app.logger.handlers = []
+app.logger.propagate = False
+
+# Add file handler for logging
 app.logger.addHandler(log_handler)
 app.logger.setLevel(logging.INFO)
-
 
 NGINX_SERVER = "http://nginx:80"
 
@@ -95,6 +100,8 @@ def handle_disconnect():
 
 
 if __name__ == '__main__':
-    app.logger.info("App started and logging is active")
-    app.run(host='0.0.0.0', port=5000)
+    # Remove the line that prints log to console
+    # app.logger.info("App started and logging is active")
+    
+    # Run the Flask and SocketIO app
     socketio.run(app, host='0.0.0.0', port=5000)

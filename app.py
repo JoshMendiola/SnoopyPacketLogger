@@ -10,7 +10,7 @@ from flask_socketio import SocketIO
 app = Flask(__name__)
 
 # Initialize SocketIO
-# socketio = SocketIO(app)
+socketio = SocketIO(app)
 
 # Configure logging with rotation
 log_file = '/var/log/nginx/packet_logger.log'
@@ -34,7 +34,7 @@ def log_entry(entry_type, data):
     app.logger.info(log_message)
 
     # Emit the log message to any connected WebSocket clients
-    # socketio.emit('log', log_message)
+    socketio.emit('log', log_message)
 
 
 def log_request(req):
@@ -85,16 +85,16 @@ def proxy(path):
     return response
 
 # WebSocket handler (optional)
-# @socketio.on('connect')
-# def handle_connect():
-#     print('WebSocket client connected')
+@socketio.on('connect')
+def handle_connect():
+    print('WebSocket client connected LOGGER')
 
-# @socketio.on('disconnect')
-# def handle_disconnect():
-#     print('WebSocket client disconnected')
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('WebSocket client disconnected LOGGER')
 
 
 if __name__ == '__main__':
     app.logger.info("App started and logging is active")
     app.run(host='0.0.0.0', port=5000)
-    # socketio.run(app, host='0.0.0.0', port=5000)
+    socketio.run(app, host='0.0.0.0', port=5000)

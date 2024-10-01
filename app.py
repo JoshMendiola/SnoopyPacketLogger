@@ -95,5 +95,6 @@ def proxy(path):
 
 
 if __name__ == '__main__':
+    app.logger.info("App started and logging is active")
     app.run(host='0.0.0.0', port=5000)
     # socketio.run(app, host='0.0.0.0', port=5000)

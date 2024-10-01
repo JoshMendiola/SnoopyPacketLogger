@@ -39,7 +39,12 @@ def log_entry(entry_type, data):
     app.logger.info(log_message)
 
     # Emit the log message to any connected WebSocket clients
-    socketio.emit('log', log_message)
+    try:
+        socketio.emit('log', log_message)
+        print(f"WebSocket event emitted: {log_message}")  # Debug print statement to confirm emission
+    except Exception as e:
+        print(f"Failed to emit WebSocket event: {e}")  # Print error if emission fails
+
 
 
 def log_request(req):

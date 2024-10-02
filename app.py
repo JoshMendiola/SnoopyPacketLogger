@@ -6,11 +6,11 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 import logging
 from flask_socketio import SocketIO
+from flask_cors import CORS
 
 app = Flask(__name__)
-
-# Initialize SocketIO
-socketio = SocketIO(app)
+CORS(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Configure logging with rotation
 log_file = '/var/log/nginx/packet_logger.log'

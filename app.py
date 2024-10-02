@@ -27,7 +27,6 @@ app.logger.setLevel(logging.INFO)
 
 NGINX_SERVER = "http://nginx:80"
 
-
 def log_entry(entry_type, data):
     timestamp = datetime.now().isoformat()
     log_data = {
@@ -94,7 +93,6 @@ def proxy(path):
     response = Response(resp.content, resp.status_code, headers)
     return response
 
-# WebSocket handler (optional)
 @socketio.on('connect')
 def handle_connect():
     print('WebSocket client connected LOGGER')
@@ -103,11 +101,5 @@ def handle_connect():
 def handle_disconnect():
     print('WebSocket client disconnected LOGGER')
 
-
 if __name__ == '__main__':
-    # Remove the line that prints log to console
-    # app.logger.info("App started and logging is active")
-    
-    # Run the Flask and SocketIO app
-    # socketio.run(app, host='0.0.0.0', port=5000)
     socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, debug=False)

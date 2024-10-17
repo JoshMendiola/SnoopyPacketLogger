@@ -3,8 +3,6 @@ import json
 from flask import Flask, request, Response
 import requests
 from datetime import datetime
-from logging.handlers import RotatingFileHandler
-import logging
 from flask_socketio import SocketIO
 from flask_cors import CORS
 
@@ -12,20 +10,11 @@ app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Configure logging with rotation
-log_file = '/var/log/nginx/packet_logger.log'
-log_handler = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
-log_handler.setLevel(logging.INFO)
-
-# Remove default StreamHandler (console logging)
-app.logger.handlers = []
-app.logger.propagate = False
-
-# Add file handler for logging
-app.logger.addHandler(log_handler)
-app.logger.setLevel(logging.INFO)
+# Configure JSON logging
+log_file = '/var/log/nginx/packet_logger.json'
 
 NGINX_SERVER = "http://nginx:80"
+
 
 def log_entry(entry_type, data):
     timestamp = datetime.now().isoformat()
@@ -34,16 +23,18 @@ def log_entry(entry_type, data):
         "type": entry_type,
         **data
     }
-    log_message = json.dumps(log_data)
-    app.logger.info(log_message)
+
+    # Write the log entry to the JSON file
+    with open(log_file, 'a') as f:
+        json.dump(log_data, f)
+        f.write('\n')  # Add a newline for readability
 
     # Emit the log message to any connected WebSocket clients
     try:
-        socketio.emit('log', log_message)
-        print(f"WebSocket event emitted: {log_message}")  # Debug print statement to confirm emission
+        socketio.emit('log', json.dumps(log_data))
+        print(f"WebSocket event emitted: {json.dumps(log_data)}")  # Debug print statement to confirm emission
     except Exception as e:
         print(f"Failed to emit WebSocket event: {e}")  # Print error if emission fails
-
 
 
 def log_request(req):
@@ -93,13 +84,20 @@ def proxy(path):
     response = Response(resp.content, resp.status_code, headers)
     return response
 
+
 @socketio.on('connect')
 def handle_connect():
     print('WebSocket client connected LOGGER')
+
 
 @socketio.on('disconnect')
 def handle_disconnect():
     print('WebSocket client disconnected LOGGER')
 
+
 if __name__ == '__main__':
+    # Ensure the log file exists and is a valid JSON array
+    if not os.path.exists(log_file):
+        with open(log_file, 'w') as f:
+            f.write('[]')
     socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, debug=False)

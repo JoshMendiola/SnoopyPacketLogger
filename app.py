@@ -16,11 +16,10 @@ log_file = '/var/log/nginx/packet_logger.json'
 NGINX_SERVER = "http://nginx:80"
 
 
-def log_entry(entry_type, data):
+def log_entry(data):
     timestamp = datetime.now().isoformat()
     log_data = {
         "timestamp": timestamp,
-        "type": entry_type,
         **data
     }
 
@@ -40,23 +39,11 @@ def log_entry(entry_type, data):
 def log_request(req):
     headers = dict(req.headers)
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
-    log_entry("REQUEST", {
+    log_entry({
+        "type": "REQUEST",
         "ip": req.remote_addr,
         "method": req.method,
         "path": req.full_path,
-        "headers": headers,
-        "body": body
-    })
-
-
-def log_response(resp):
-    headers = dict(resp.headers)
-    content_type = headers.get('Content-Type', '')
-    body = None
-    if 'text/html' not in content_type:
-        body = resp.text[:1000] if len(resp.text) > 1000 else resp.text
-    log_entry("RESPONSE", {
-        "status_code": resp.status_code,
         "headers": headers,
         "body": body
     })
@@ -74,8 +61,6 @@ def proxy(path):
         data=request.get_data(),
         cookies=request.cookies,
         allow_redirects=False)
-
-    log_response(resp)
 
     excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
     headers = [(name, value) for (name, value) in resp.raw.headers.items()
@@ -96,8 +81,8 @@ def handle_disconnect():
 
 
 if __name__ == '__main__':
-    # Ensure the log file exists and is a valid JSON array
+    # Ensure the log file exists
     if not os.path.exists(log_file):
         with open(log_file, 'w') as f:
-            f.write('[]')
+            pass  # Create an empty file
     socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, debug=False)

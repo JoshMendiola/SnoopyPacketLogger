@@ -4,9 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9ca70254-ee3d-4b6a-886b-22e36f09aaa7" name="Changes" comment="fix dockerfile for new pathing on server">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-    </list>
+    <list default="true" id="9ca70254-ee3d-4b6a-886b-22e36f09aaa7" name="Changes" comment="update logs to be put into a json format" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -77,7 +75,7 @@
       <workItem from="1727659903040" duration="49000" />
       <workItem from="1727667563050" duration="2139000" />
       <workItem from="1728003385693" duration="125000" />
-      <workItem from="1729184516719" duration="2311000" />
+      <workItem from="1729184516719" duration="2660000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -119,7 +117,15 @@
       <option name="project" value="LOCAL" />
       <updated>1727639590439</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="update logs to be put into a json format">
+      <option name="closed" value="true" />
+      <created>1729188102293</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1729188102293</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -131,6 +137,7 @@
     <MESSAGE value="added new summarizing for html" />
     <MESSAGE value="rework docker-file for clearing logs" />
     <MESSAGE value="fix dockerfile for new pathing on server" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix dockerfile for new pathing on server" />
+    <MESSAGE value="update logs to be put into a json format" />
+    <option name="LAST_COMMIT_MESSAGE" value="update logs to be put into a json format" />
   </component>
 </project>

@@ -3,18 +3,20 @@ import json
 from flask import Flask, request, Response
 import requests
 from datetime import datetime
-from flask_socketio import SocketIO
 from flask_cors import CORS
+from ids_client import IDSClient
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Configure JSON logging
 log_file = '/var/log/nginx/packet_logger.json'
 
 NGINX_SERVER = "http://nginx:80"
+IDS_SERVER = os.getenv('IDS_SERVER')  # Use environment variable or default to localhost
+IDS_PORT = os.getenv('IDS_PORT')  # Use environment variable or default to 50051
 
+ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
 def log_entry(data):
     timestamp = datetime.now().isoformat()
@@ -28,13 +30,11 @@ def log_entry(data):
         json.dump(log_data, f)
         f.write('\n')  # Add a newline for readability
 
-    # Emit the log message to any connected WebSocket clients
-    try:
-        socketio.emit('log', json.dumps(log_data))
-        print(f"WebSocket event emitted: {json.dumps(log_data)}")  # Debug print statement to confirm emission
-    except Exception as e:
-        print(f"Failed to emit WebSocket event: {e}")  # Print error if emission fails
-
+    # Send log to IDS server
+    injection_detected, message = ids_client.process_log(log_data)
+    print(f"IDS Response: {message}")
+    if injection_detected:
+        print("WARNING: SQL Injection attempt detected!")
 
 def log_request(req):
     headers = dict(req.headers)
@@ -47,7 +47,6 @@ def log_request(req):
         "headers": headers,
         "body": body
     })
-
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
@@ -69,20 +68,9 @@ def proxy(path):
     response = Response(resp.content, resp.status_code, headers)
     return response
 
-
-@socketio.on('connect')
-def handle_connect():
-    print('WebSocket client connected LOGGER')
-
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    print('WebSocket client disconnected LOGGER')
-
-
 if __name__ == '__main__':
     # Ensure the log file exists
     if not os.path.exists(log_file):
         with open(log_file, 'w') as f:
             pass  # Create an empty file
-    socketio.run(app, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False)

@@ -3,6 +3,6 @@ flask~=3.0.3
 flask_socketio
 flask_cors
 python-socketio
-grpcio==1.56.2
+grpcio==1.54.0
 grpcio-tools==1.54.0
-protobuf==4.22.3
+protobuf==3.20.3

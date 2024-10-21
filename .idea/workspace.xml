@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9ca70254-ee3d-4b6a-886b-22e36f09aaa7" name="Changes" comment="update logs to be put into a json format" />
+    <list default="true" id="9ca70254-ee3d-4b6a-886b-22e36f09aaa7" name="Changes" comment="only log requests now, not responses">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -75,7 +78,8 @@
       <workItem from="1727659903040" duration="49000" />
       <workItem from="1727667563050" duration="2139000" />
       <workItem from="1728003385693" duration="125000" />
-      <workItem from="1729184516719" duration="2660000" />
+      <workItem from="1729184516719" duration="4973000" />
+      <workItem from="1729476425840" duration="505000" />
     </task>
     <task id="LOCAL-00001" summary="initial commit">
       <option name="closed" value="true" />
@@ -125,7 +129,15 @@
       <option name="project" value="LOCAL" />
       <updated>1729188102293</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="only log requests now, not responses">
+      <option name="closed" value="true" />
+      <created>1729188505016</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1729188505016</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -138,6 +150,7 @@
     <MESSAGE value="rework docker-file for clearing logs" />
     <MESSAGE value="fix dockerfile for new pathing on server" />
     <MESSAGE value="update logs to be put into a json format" />
-    <option name="LAST_COMMIT_MESSAGE" value="update logs to be put into a json format" />
+    <MESSAGE value="only log requests now, not responses" />
+    <option name="LAST_COMMIT_MESSAGE" value="only log requests now, not responses" />
   </component>
 </project>

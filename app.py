@@ -18,6 +18,7 @@ IDS_PORT = os.getenv('IDS_PORT')  # Use environment variable or default to 50051
 
 ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
+
 def log_entry(data):
     timestamp = datetime.now().isoformat()
     log_data = {
@@ -36,6 +37,7 @@ def log_entry(data):
     if injection_detected:
         print("WARNING: SQL Injection attempt detected!")
 
+
 def log_request(req):
     headers = dict(req.headers)
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
@@ -47,6 +49,7 @@ def log_request(req):
         "headers": headers,
         "body": body
     })
+
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
@@ -67,6 +70,7 @@ def proxy(path):
 
     response = Response(resp.content, resp.status_code, headers)
     return response
+
 
 if __name__ == '__main__':
     # Ensure the log file exists

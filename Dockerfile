@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-COPY ssl/ca.crt ssl/mojorepair.key ssl/mojorepair.crt ./
+COPY ssl/ca.crt ssl/client.key ssl/client.crt ./
 
 RUN mkdir -p /app/utils
 

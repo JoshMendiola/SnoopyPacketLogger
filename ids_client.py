@@ -31,19 +31,26 @@ class IDSClient:
                 )
                 
                 # Add channel options for better connection handling
+                # More conservative channel options
                 options = [
-                    ('grpc.keepalive_time_ms', 10000),
-                    ('grpc.keepalive_timeout_ms', 5000),
-                    ('grpc.keepalive_permit_without_calls', True),
-                    ('grpc.http2.max_pings_without_data', 0),
-                    ('grpc.http2.min_time_between_pings_ms', 10000),
-                    ('grpc.http2.min_ping_interval_without_data_ms', 5000)
+                    ('grpc.keepalive_time_ms', 30000),          # Increased from 10000
+                    ('grpc.keepalive_timeout_ms', 10000),       # Increased from 5000
+                    ('grpc.keepalive_permit_without_calls', False),  # Changed to False
+                    ('grpc.http2.max_pings_without_data', 2),    # Added limit
+                    ('grpc.http2.min_time_between_pings_ms', 30000), # Increased from 10000
+                    ('grpc.http2.min_ping_interval_without_data_ms', 30000), # Increased from 5000
+                    ('grpc.max_receive_message_length', 1024 * 1024 * 100),  # 100MB
+                    ('grpc.max_send_message_length', 1024 * 1024 * 100),     # 100MB
                 ]
                 
                 target = f"{host}:{port}"
                 print(f"Attempting to connect to IDS server at {target} (Attempt {attempt + 1}/{max_retries})")
                 
                 self.channel = grpc.secure_channel(target, credentials, options=options)
+
+                # Add channel connectivity callback
+                self.channel.subscribe(self._on_channel_state_change)
+
                 self.stub = ids_pb2_grpc.IDSStub(self.channel)
                 self.client_id = f"packet_logger_{socket.gethostname()}"
                 
@@ -65,6 +72,14 @@ class IDSClient:
         
         raise Exception("Failed to connect to IDS server after multiple attempts")
 
+    def _on_channel_state_change(self, connectivity):
+        """Monitor channel state changes"""
+        print(f"Channel connectivity changed to: {connectivity}")
+        if connectivity == grpc.ChannelConnectivity.TRANSIENT_FAILURE:
+            print("Channel experienced transient failure, will automatically reconnect")
+        elif connectivity == grpc.ChannelConnectivity.SHUTDOWN:
+            print("Channel has been shutdown")
+
     def check_server_health(self):
         try:
             request = ids_pb2.HealthCheckRequest(client_id=self.client_id)
@@ -77,33 +92,41 @@ class IDSClient:
             return False
 
     def process_log(self, log_entry):
-        # Create the log entry request
-        request = ids_pb2.LogEntry(
-            timestamp=log_entry['timestamp'],
-            type=log_entry['type'],
-            ip=log_entry['ip'],
-            method=log_entry['method'],
-            path=log_entry['path'],
-            headers={k: str(v) for k, v in log_entry['headers'].items()},
-            body=log_entry.get('body', ''),
-            client_id=self.client_id  # Add client ID to the request
-        )
+        # Add retry logic for processing logs
+        max_retries = 3
+        retry_delay = 1
+        
+        for attempt in range(max_retries):
+            try:
+                # Create the log entry request
+                request = ids_pb2.LogEntry(
+                    timestamp=log_entry['timestamp'],
+                    type=log_entry['type'],
+                    ip=log_entry['ip'],
+                    method=log_entry['method'],
+                    path=log_entry['path'],
+                    headers={k: str(v) for k, v in log_entry['headers'].items()},
+                    body=log_entry.get('body', ''),
+                    client_id=self.client_id
+                )
 
-        try:
-            # Send the log to the IDS server
-            response = self.stub.ProcessLog(request)
-            
-            # Check for matched rules
-            if response.injection_detected:
-                rules_message = f"Matched rules: {', '.join(response.matched_rules)}" if response.matched_rules else "No specific rules matched"
-                print(f"Injection detected! {rules_message}")
-            
-            return response.injection_detected, response.message
-            
-        except grpc.RpcError as e:
-            error_message = f"Error communicating with IDS: {e}"
-            print(error_message)
-            return False, error_message
+                # Send the log to the IDS server
+                response = self.stub.ProcessLog(request)
+                
+                if response.injection_detected:
+                    rules_message = f"Matched rules: {', '.join(response.matched_rules)}" if response.matched_rules else "No specific rules matched"
+                    print(f"Injection detected! {rules_message}")
+                
+                return response.injection_detected, response.message
+                
+            except grpc.RpcError as e:
+                print(f"RPC Error on attempt {attempt + 1}: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                else:
+                    error_message = f"Error communicating with IDS after {max_retries} attempts: {e}"
+                    print(error_message)
+                    return False, error_message
 
     def close(self):
         self.channel.close()

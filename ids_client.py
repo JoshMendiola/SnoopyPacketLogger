@@ -111,21 +111,30 @@ class IDSClient:
                 )
 
                 # Send the log to the IDS server
+                print("\nSending request to IDS server...")
                 response = self.stub.ProcessLog(request)
+                print("Response received from IDS server")
                 
                 if response.injection_detected:
-                    rules_message = f"Matched rules: {', '.join(response.matched_rules)}" if response.matched_rules else "No specific rules matched"
-                    print(f"Injection detected! {rules_message}")
+                    print("\n🚨 ALERT: Potential Injection Detected!")
+                    if response.matched_rules:
+                        print(f"Matched Rules: {', '.join(response.matched_rules)}")
+                    print(f"Server Message: {response.message}")
+                else:
+                    print("\n✅ No injection detected")
+                    print(f"Server Message: {response.message}")
                 
                 return response.injection_detected, response.message
                 
             except grpc.RpcError as e:
-                print(f"RPC Error on attempt {attempt + 1}: {e}")
+                print(f"\n❌ RPC Error on attempt {attempt + 1}:")
+                print(f"Error details: {e}")
                 if attempt < max_retries - 1:
+                    print(f"Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
                 else:
-                    error_message = f"Error communicating with IDS after {max_retries} attempts: {e}"
-                    print(error_message)
+                    error_message = f"Failed to communicate with IDS after {max_retries} attempts"
+                    print(f"\n❌ {error_message}")
                     return False, error_message
 
     def close(self):

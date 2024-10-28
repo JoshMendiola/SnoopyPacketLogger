@@ -4,32 +4,57 @@ import ids_pb2
 import ids_pb2_grpc
 import socket
 
+
 class IDSClient:
     def __init__(self, host, port):
-        # Load certificates
-        with open('ssl/ca.crt', 'rb') as f:
-            root_certificates = f.read()
-        with open('ssl/client.key', 'rb') as f:
-            private_key = f.read()
-        with open('ssl/client.crt', 'rb') as f:
-            certificate_chain = f.read()
+        try:
+            # Load certificates with proper error handling
+            cert_path = 'ssl'  # or get from environment
+            with open(f'{cert_path}/ca.crt', 'rb') as f:
+                root_certificates = f.read()
+            with open(f'{cert_path}/client.key', 'rb') as f:
+                private_key = f.read()
+            with open(f'{cert_path}/client.crt', 'rb') as f:
+                certificate_chain = f.read()
             
-        # Create credentials
-        credentials = grpc.ssl_channel_credentials(
-            root_certificates=root_certificates,
-            private_key=private_key,
-            certificate_chain=certificate_chain
-        )
-        
-        # Create secure channel
-        self.channel = grpc.secure_channel(f"{host}:{port}", credentials)
-        self.stub = ids_pb2_grpc.IDSStub(self.channel)
-        
-        # Generate a unique client ID using hostname
-        self.client_id = f"packet_logger_{socket.gethostname()}"
-        
-        # Check server health on startup
-        self.check_server_health()
+            # Create credentials
+            credentials = grpc.ssl_channel_credentials(
+                root_certificates=root_certificates,
+                private_key=private_key,
+                certificate_chain=certificate_chain
+            )
+            
+            # Add channel options for better connection handling
+            options = [
+                ('grpc.keepalive_time_ms', 10000),
+                ('grpc.keepalive_timeout_ms', 5000),
+                ('grpc.keepalive_permit_without_calls', True),
+                ('grpc.http2.max_pings_without_data', 0),
+                ('grpc.http2.min_time_between_pings_ms', 10000),
+                ('grpc.http2.min_ping_interval_without_data_ms', 5000)
+            ]
+            
+            channel_target = f"{host}:{port}"
+            print(f"Attempting to connect to IDS server at {channel_target}")
+            
+            # Create secure channel with options
+            self.channel = grpc.secure_channel(
+                channel_target, 
+                credentials,
+                options=options
+            )
+            self.stub = ids_pb2_grpc.IDSStub(self.channel)
+            
+            # Generate a unique client ID using hostname
+            self.client_id = f"packet_logger_{socket.gethostname()}"
+            
+            # Check server health on startup
+            if not self.check_server_health():
+                raise Exception("Failed initial health check")
+                
+        except Exception as e:
+            print(f"Failed to initialize IDS client: {str(e)}")
+            raise
 
     def check_server_health(self):
         try:

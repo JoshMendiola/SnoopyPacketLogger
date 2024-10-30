@@ -54,13 +54,13 @@ def log_entry(data):
         logger.info(f"Body Preview: {data['body'][:100]}...")
 
     # Send log to IDS server
-    injection_detected, message = ids_client.process_log(log_data)
+    attack_detected, message = ids_client.process_log(log_data)
 
-    if injection_detected:
-        logger.warning("\n🚨 ALERT: Potential Injection Detected!")
+    if attack_detected:
+        logger.warning("\n🚨 ALERT: Potential Attack Detected!")
         logger.warning(f"IDS Message: {message}")
     else:
-        logger.info("\n✅ No injection detected")
+        logger.info("\n✅ No Attack detected")
         logger.info(f"IDS Message: {message}")
 
     logger.info("="*50)  # Separator line

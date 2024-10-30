@@ -6,11 +6,11 @@ from datetime import datetime
 from flask_cors import CORS
 from ids_client import IDSClient
 import logging
+from urllib.parse import urlparse, parse_qs
 
 app = Flask(__name__)
 CORS(app)
 
-# Configure logging with a cleaner format
 logging.basicConfig(
     level=logging.INFO,
     format='%(message)s',
@@ -28,32 +28,69 @@ IDS_PORT = os.getenv('IDS_PORT')
 
 ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
-def log_entry(data):
-    timestamp = datetime.now().isoformat()
-    log_data = {
-        "timestamp": timestamp,
-        **data
+def format_log_message(response, request_info):
+    status = "✅" if not response.injection_detected else "❌"
+    timestamp = datetime.now().strftime("[%d/%b/%Y %H:%M:%S]")
+    ip = request_info.get('ip', '-')
+    method = request_info.get('method', '-')
+    path = request_info.get('path', '-')
+    
+    msg = f"{status} REQUEST SENT TO IDS SERVER AND RESPONSE WAS: {response.message}\n" \
+          f"{ip} - - {timestamp} \"{method} {path} HTTP/1.1\" {request_info.get('status_code', '-')} -"
+    
+    if response.injection_detected:
+        msg += f"\nRequest Details:\n" \
+               f"IP: {ip}\n" \
+               f"Method: {method}\n" \
+               f"Path: {path}"
+        if request_info.get('query_params'):
+            msg += f"\nQuery Parameters: {request_info['query_params']}"
+    return msg
+
+def process_url(url):
+    """Extract and process URL components for analysis"""
+    parsed = urlparse(url)
+    path = parsed.path
+    query_dict = parse_qs(parsed.query)
+    
+    # Convert query params to json-compatible format
+    query_params = {k: v[0] if len(v) == 1 else v for k, v in query_dict.items()}
+    
+    return {
+        "path": path,
+        "query_params": query_params,
+        "full_path": url
     }
+
+def log_entry(data):
+    # Process URL components for GET requests
+    if data['method'] == 'GET':
+        url_data = process_url(data['path'])
+        data.update({
+            "analyzed_data": {
+                "path_components": url_data['path'].split('/'),
+                "query_params": url_data['query_params'],
+                "full_path": url_data['full_path']
+            }
+        })
+    else:
+        # For POST/PUT/PATCH, include body in analyzed_data
+        try:
+            body_data = json.loads(data.get('body', '{}'))
+            data['analyzed_data'] = body_data
+        except json.JSONDecodeError:
+            data['analyzed_data'] = {"raw_body": data.get('body', '')}
 
     # Write to JSON file
     with open(log_file, 'a') as f:
-        json.dump(log_data, f)
+        json.dump(data, f)
         f.write('\n')
     
-    # Send log to IDS server and get response
-    injection_detected, message = ids_client.process_log(log_data)
+    # Send log to IDS server
+    injection_detected, response = ids_client.process_log(data)
     
-    if injection_detected:
-        logger.warning("\n🚨 REQUEST SENT TO IDS SERVER AND RESPONSE WAS: " + message)
-        logger.warning("\nRequest Details:")
-        logger.warning(f"Timestamp: {timestamp}")
-        logger.warning(f"IP: {data.get('ip')}")
-        logger.warning(f"Method: {data.get('method')}")
-        logger.warning(f"Path: {data.get('path')}")
-        if data.get('body'):
-            logger.warning(f"Request Body Preview: {data['body'][:100]}...")
-    else:
-        logger.info("\n✅ REQUEST SENT TO IDS SERVER AND RESPONSE WAS: " + message)
+    # Log formatted message
+    logger.info(format_log_message(response, data))
 
 def log_request(req):
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
@@ -93,10 +130,7 @@ def proxy(path):
         return Response("Internal Server Error", status=500)
 
 if __name__ == '__main__':
-    logger.info("Starting Packet Logger Service")
-    
     if not os.path.exists(log_file):
         with open(log_file, 'w') as f:
             pass
-    
     app.run(host='0.0.0.0', port=5000, debug=False)

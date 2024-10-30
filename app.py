@@ -29,6 +29,14 @@ IDS_PORT = os.getenv('IDS_PORT')
 
 ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
+def get_formatted_timestamp():
+    """Get current timestamp in ISO format"""
+    return datetime.now().isoformat()
+
+def format_log_entry(timestamp, method, path, status_code='-'):
+    """Format timestamp for log entry"""
+    return f"{timestamp} \"{method} {path} HTTP/1.1\" {status_code}"
+
 def format_log_message(ids_response, request_info):
     try:
         if hasattr(ids_response, 'injection_detected'):
@@ -38,18 +46,19 @@ def format_log_message(ids_response, request_info):
             status = "✅"
             message = str(ids_response)
 
-        timestamp = datetime.now().strftime("[%d/%b/%Y %H:%M:%S]")
-        ip = request_info.get('ip', '-')
-        method = request_info.get('method', '-')
-        path = request_info.get('path', '-')
-        status_code = request_info.get('status_code', '-')
+        # Format the log entry
+        log_entry = format_log_entry(
+            datetime.now().strftime("[%d/%b/%Y %H:%M:%S]"),
+            request_info.get('method', '-'),
+            request_info.get('path', '-'),
+            request_info.get('status_code', '-')
+        )
         
-        msg = f"{status} REQUEST SENT TO IDS SERVER AND RESPONSE WAS: {message}\n" \
-              f"{ip} - - {timestamp} \"{method} {path} HTTP/1.1\" {status_code} -"
-        return msg
+        return f"{status} REQUEST SENT TO IDS SERVER AND RESPONSE WAS: {message}\n" \
+               f"{request_info.get('ip', '-')} - - {log_entry}"
     except Exception as e:
         logger.error(f"Error formatting log message: {str(e)}")
-        return f"Error processing request: {str(e)}"
+        return f"Error formatting message: {str(e)}"
 
 def process_url(url):
     """Extract and process URL components for analysis"""
@@ -73,13 +82,13 @@ def process_url(url):
 
 def create_analyzable_headers(headers):
     """Convert headers to a simple dict for analysis"""
-    return {k.lower(): v for k, v in headers.items()}
+    return {k.lower(): str(v) for k, v in headers.items()}
 
 def log_entry(data):
     try:
         # Create a serializable analysis object
         analysis_data = {
-            "timestamp": datetime.now().isoformat(),
+            "request_time": get_formatted_timestamp(),
             "method": data['method'],
             "ip": data['ip'],
             "url_data": process_url(data['path']),
@@ -93,18 +102,27 @@ def log_entry(data):
             except json.JSONDecodeError:
                 analysis_data['body'] = {"raw_content": data['body']}
 
+        # Create log entry
+        log_data = {
+            "timestamp": get_formatted_timestamp(),
+            **data,
+            "analyzed_data": analysis_data
+        }
+
         # Write to JSON file
         with open(log_file, 'a') as f:
-            json.dump(data, f)
+            json.dump(log_data, f)
             f.write('\n')
+        
+        # Prepare data for IDS server
+        ids_data = {
+            "type": "REQUEST",
+            "data": json.dumps(analysis_data)  # Convert analysis data to JSON string
+        }
         
         # Send to IDS server
         try:
-            response = ids_client.process_log({
-                "type": "REQUEST",
-                "analysis_data": json.dumps(analysis_data)  # Convert to JSON string
-            })
-            
+            response = ids_client.process_log(ids_data)
             logger.info(format_log_message(response, data))
             return True, response
             
@@ -112,7 +130,7 @@ def log_entry(data):
             logger.error(f"Error communicating with IDS server: {str(e)}")
             return False, ids_pb2.ProcessResult(
                 injection_detected=False,
-                message=f"Error processing request: {str(e)}",
+                message=f"Error communicating with IDS server: {str(e)}",
                 matched_rules=[]
             )
             
@@ -120,7 +138,7 @@ def log_entry(data):
         logger.error(f"Error in log_entry: {str(e)}")
         return False, ids_pb2.ProcessResult(
             injection_detected=False,
-            message=f"Error processing request: {str(e)}",
+            message=f"Error in log processing: {str(e)}",
             matched_rules=[]
         )
 
@@ -134,7 +152,8 @@ def log_request(req):
             "method": req.method,
             "path": req.full_path,
             "headers": dict(req.headers),
-            "body": body
+            "body": body,
+            "timestamp": get_formatted_timestamp()
         }
         
         return log_entry(request_data)
@@ -151,8 +170,10 @@ def log_request(req):
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def proxy(path):
     try:
+        # Log the request first
         success, _ = log_request(request)
         
+        # Forward the request to nginx
         resp = requests.request(
             method=request.method,
             url=f"{NGINX_SERVER}/{path}",

@@ -74,11 +74,16 @@ def log_request(req):
 
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
 
-    log_entry({
+    log_data = {
         "type": "REQUEST",
         "ip": req.remote_addr,
+        "method": req.method,  # Added missing method
+        "path": req.path,      # Added missing path
+        "headers": headers,    # Added missing headers
         "body": body
-    })
+    }
+
+    log_entry(log_data)
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])

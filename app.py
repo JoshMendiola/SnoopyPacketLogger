@@ -50,37 +50,6 @@ def prepare_headers(headers):
     """Convert headers to string key-value pairs"""
     return {str(k): str(v) for k, v in headers.items()}
 
-def process_url(url):
-    """Extract and process URL components for analysis"""
-    try:
-        parsed = urlparse(url)
-        path_components = [comp for comp in parsed.path.split('/') if comp]
-        query_dict = parse_qs(parsed.query)
-        
-        # Convert query params to simple dict with single values
-        query_params = {k: v[0] if len(v) == 1 else v for k, v in query_dict.items()}
-        
-        return {
-            "path_components": path_components,
-            "query_params": query_params,
-            "raw_path": parsed.path,
-            "raw_query": parsed.query
-        }
-    except Exception as e:
-        logger.error(f"Error processing URL: {str(e)}")
-        return {}
-
-def prepare_request_data(data):
-    """Prepare request data for analysis"""
-    return {
-        "method": data.get('method', ''),
-        "path": data.get('path', ''),
-        "url_data": process_url(data.get('path', '')),
-        "headers": prepare_headers(data.get('headers', {})),
-        "body": data.get('body', ''),
-        "ip": data.get('ip', '')
-    }
-
 def log_entry(data):
     try:
         # Create log entry for file
@@ -94,11 +63,16 @@ def log_entry(data):
             json.dump(log_data, f)
             f.write('\n')
         
-        # Prepare data for IDS server
+        # Prepare data for IDS server - match exactly what ids_client expects
         ids_data = {
-            "timestamp": get_formatted_timestamp(),
-            "type": "REQUEST",
-            "analysis_data": json.dumps(prepare_request_data(data))
+            'timestamp': get_formatted_timestamp(),
+            'type': 'REQUEST',
+            'ip': data['ip'],
+            'method': data['method'],
+            'path': data['path'],
+            'headers': prepare_headers(data['headers']),
+            'body': data.get('body', ''),
+            'client_id': 'packet_logger_1'  # Adding client_id as required by IDS client
         }
         
         # Send to IDS server
@@ -120,11 +94,11 @@ def log_request(req):
         body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
         
         request_data = {
-            "ip": req.remote_addr,
-            "method": req.method,
-            "path": req.full_path,
-            "headers": dict(req.headers),
-            "body": body
+            'ip': req.remote_addr,
+            'method': req.method,
+            'path': req.full_path,
+            'headers': dict(req.headers),
+            'body': body
         }
         
         return log_entry(request_data)

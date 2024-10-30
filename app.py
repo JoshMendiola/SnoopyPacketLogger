@@ -7,7 +7,7 @@ from flask_cors import CORS
 from ids_client import IDSClient
 import logging
 from urllib.parse import urlparse, parse_qs
-import ids_pb2  # Add missing import
+import ids_pb2
 
 app = Flask(__name__)
 CORS(app)
@@ -31,12 +31,10 @@ ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
 def format_log_message(ids_response, request_info):
     try:
-        # Check if response is a ProcessResult object
         if hasattr(ids_response, 'injection_detected'):
             status = "❌" if ids_response.injection_detected else "✅"
             message = ids_response.message
         else:
-            # Handle string responses or other types
             status = "✅"
             message = str(ids_response)
 
@@ -46,19 +44,8 @@ def format_log_message(ids_response, request_info):
         path = request_info.get('path', '-')
         status_code = request_info.get('status_code', '-')
         
-        # Create base message
         msg = f"{status} REQUEST SENT TO IDS SERVER AND RESPONSE WAS: {message}\n" \
               f"{ip} - - {timestamp} \"{method} {path} HTTP/1.1\" {status_code} -"
-        
-        # Add details for detected attacks
-        if hasattr(ids_response, 'injection_detected') and ids_response.injection_detected:
-            msg += f"\nRequest Details:\n" \
-                   f"IP: {ip}\n" \
-                   f"Method: {method}\n" \
-                   f"Path: {path}"
-            if request_info.get('query_params'):
-                msg += f"\nQuery Parameters: {json.dumps(request_info['query_params'], indent=2)}"
-        
         return msg
     except Exception as e:
         logger.error(f"Error formatting log message: {str(e)}")
@@ -66,74 +53,76 @@ def format_log_message(ids_response, request_info):
 
 def process_url(url):
     """Extract and process URL components for analysis"""
-    parsed = urlparse(url)
-    path = parsed.path
-    query_dict = parse_qs(parsed.query)
-    
-    # Convert query params to json-compatible format
-    query_params = {k: v[0] if len(v) == 1 else v for k, v in query_dict.items()}
-    
-    return {
-        "path": path,
-        "query_params": query_params,
-        "full_path": url
-    }
+    try:
+        parsed = urlparse(url)
+        path_components = [comp for comp in parsed.path.split('/') if comp]
+        query_dict = parse_qs(parsed.query)
+        
+        # Convert query params to simple dict with single values
+        query_params = {k: v[0] if len(v) == 1 else v for k, v in query_dict.items()}
+        
+        return {
+            "path_components": path_components,
+            "query_params": query_params,
+            "raw_path": parsed.path,
+            "raw_query": parsed.query
+        }
+    except Exception as e:
+        logger.error(f"Error processing URL: {str(e)}")
+        return {"error": str(e)}
 
-def create_default_response():
-    """Create a default ProcessResult for error cases"""
-    return ids_pb2.ProcessResult(
-        injection_detected=False,
-        message="Error processing request",
-        matched_rules=[]
-    )
+def create_analyzable_headers(headers):
+    """Convert headers to a simple dict for analysis"""
+    return {k.lower(): v for k, v in headers.items()}
 
 def log_entry(data):
     try:
-        # Ensure timestamp is added to data
-        data['timestamp'] = datetime.now().isoformat()
-        
-        # Process URL components for GET requests
-        if data['method'] == 'GET':
-            url_data = process_url(data['path'])
-            data.update({
-                "analyzed_data": {
-                    "path_components": url_data['path'].split('/'),
-                    "query_params": url_data['query_params'],
-                    "full_path": url_data['full_path']
-                }
-            })
-        else:
-            # For POST/PUT/PATCH, include body in analyzed_data
+        # Create a serializable analysis object
+        analysis_data = {
+            "timestamp": datetime.now().isoformat(),
+            "method": data['method'],
+            "ip": data['ip'],
+            "url_data": process_url(data['path']),
+            "headers": create_analyzable_headers(data.get('headers', {}))
+        }
+
+        # Add body analysis for POST/PUT/PATCH
+        if data['method'] in ['POST', 'PUT', 'PATCH'] and data.get('body'):
             try:
-                body_data = json.loads(data.get('body', '{}'))
-                data['analyzed_data'] = body_data
+                analysis_data['body'] = json.loads(data['body'])
             except json.JSONDecodeError:
-                data['analyzed_data'] = {"raw_body": data.get('body', '')}
+                analysis_data['body'] = {"raw_content": data['body']}
 
         # Write to JSON file
         with open(log_file, 'a') as f:
             json.dump(data, f)
             f.write('\n')
         
-        # Send log to IDS server
+        # Send to IDS server
         try:
-            response = ids_client.process_log(data)
-            if isinstance(response, tuple) and len(response) == 2:
-                _, ids_response = response
-            else:
-                ids_response = response
+            response = ids_client.process_log({
+                "type": "REQUEST",
+                "analysis_data": json.dumps(analysis_data)  # Convert to JSON string
+            })
             
-            # Log formatted message
-            logger.info(format_log_message(ids_response, data))
-            return True, ids_response
+            logger.info(format_log_message(response, data))
+            return True, response
             
         except Exception as e:
             logger.error(f"Error communicating with IDS server: {str(e)}")
-            return False, create_default_response()
+            return False, ids_pb2.ProcessResult(
+                injection_detected=False,
+                message=f"Error processing request: {str(e)}",
+                matched_rules=[]
+            )
             
     except Exception as e:
         logger.error(f"Error in log_entry: {str(e)}")
-        return False, create_default_response()
+        return False, ids_pb2.ProcessResult(
+            injection_detected=False,
+            message=f"Error processing request: {str(e)}",
+            matched_rules=[]
+        )
 
 def log_request(req):
     try:
@@ -145,24 +134,25 @@ def log_request(req):
             "method": req.method,
             "path": req.full_path,
             "headers": dict(req.headers),
-            "body": body,
-            "timestamp": datetime.now().isoformat()
+            "body": body
         }
         
         return log_entry(request_data)
         
     except Exception as e:
         logger.error(f"Error in log_request: {str(e)}")
-        return False, create_default_response()
+        return False, ids_pb2.ProcessResult(
+            injection_detected=False,
+            message=f"Error processing request: {str(e)}",
+            matched_rules=[]
+        )
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def proxy(path):
     try:
-        # Log the request first
         success, _ = log_request(request)
         
-        # Forward the request to nginx
         resp = requests.request(
             method=request.method,
             url=f"{NGINX_SERVER}/{path}",

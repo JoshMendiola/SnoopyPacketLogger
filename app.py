@@ -6,15 +6,14 @@ from datetime import datetime
 from flask_cors import CORS
 from ids_client import IDSClient
 import logging
-from urllib.parse import urlparse, parse_qs
-import ids_pb2
 
 app = Flask(__name__)
 CORS(app)
 
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler('/var/log/nginx/packet_logger.log')
@@ -22,103 +21,75 @@ logging.basicConfig(
 )
 logger = logging.getLogger('packet_logger')
 
+# Configure JSON logging
 log_file = '/var/log/nginx/packet_logger.json'
+
 NGINX_SERVER = "http://nginx:80"
 IDS_SERVER = os.getenv('IDS_SERVER')
 IDS_PORT = os.getenv('IDS_PORT')
 
+logger.info(f"Initializing IDS client with server {IDS_SERVER}:{IDS_PORT}")
 ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
-def get_formatted_timestamp():
-    """Get current timestamp in ISO format"""
-    return datetime.now().isoformat()
-
-def format_log_message(injection_detected, message, request_info):
-    try:
-        status = "❌" if injection_detected else "✅"
-        log_line = f"{request_info.get('ip', '-')} - - " \
-                   f"[{datetime.now().strftime('%d/%b/%Y %H:%M:%S')}] " \
-                   f"\"{request_info.get('method', '-')} {request_info.get('path', '-')} HTTP/1.1\" " \
-                   f"{request_info.get('status_code', '-')} -"
-        
-        return f"{status} REQUEST SENT TO IDS SERVER AND RESPONSE WAS: {message}\n{log_line}"
-    except Exception as e:
-        logger.error(f"Error formatting log message: {str(e)}")
-        return f"Error formatting message: {str(e)}"
-
-def prepare_headers(headers):
-    """Convert headers to string key-value pairs"""
-    try:
-        # Convert all header values to strings and ensure lowercase keys
-        return {str(k).lower(): str(v) for k, v in headers.items()}
-    except Exception as e:
-        logger.error(f"Error preparing headers: {str(e)}")
-        return {}
-
 def log_entry(data):
-    try:
-        # Create log entry for file
-        log_data = {
-            "timestamp": get_formatted_timestamp(),
-            **data
-        }
-        
-        # Write to JSON file
-        with open(log_file, 'a') as f:
-            json.dump(log_data, f)
-            f.write('\n')
-        
-        # Prepare data exactly according to proto definition
-        try:
-            ids_data = {
-                'timestamp': get_formatted_timestamp(),
-                'type': 'REQUEST',
-                'ip': data['ip'],
-                'method': data['method'],
-                'path': data['path'],
-                'headers': prepare_headers(data['headers']),
-                'body': data.get('body', ''),
-                'client_id': 'packet_logger_1'
-            }
-            
-            injection_detected, message = ids_client.process_log(ids_data)
-            logger.info(format_log_message(injection_detected, message, data))
-            return True, message
-            
-        except Exception as e:
-            logger.error(f"Error communicating with IDS server: {str(e)}")
-            return False, f"Error communicating with IDS server: {str(e)}"
-            
-    except Exception as e:
-        logger.error(f"Error in log_entry: {str(e)}")
-        return False, f"Error in log processing: {str(e)}"
+    timestamp = datetime.now().isoformat()
+    log_data = {
+        "timestamp": timestamp,
+        **data
+    }
+    # Write the log entry to the JSON file
+    with open(log_file, 'a') as f:
+        json.dump(log_data, f)
+        f.write('\n')
+
+        logger.info("\n=== Sending Log to IDS Server ===")
+        logger.info(f"Timestamp: {timestamp}")
+        logger.info(f"IP: {data.get('ip')}")
+        logger.info(f"Method: {data.get('method')}")
+        logger.info(f"Path: {data.get('path')}")
+
+    if data.get('body'):
+        logger.info(f"Body Length: {len(data['body'])} characters")
+        # Log first 100 characters of body for visibility
+        logger.info(f"Body Preview: {data['body'][:100]}...")
+
+    # Send log to IDS server
+    injection_detected, message = ids_client.process_log(log_data)
+
+    if injection_detected:
+        logger.warning("\n🚨 ALERT: Potential Injection Detected!")
+        logger.warning(f"IDS Message: {message}")
+    else:
+        logger.info("\n✅ No injection detected")
+        logger.info(f"IDS Message: {message}")
+
+    logger.info("="*50)  # Separator line
 
 def log_request(req):
-    try:
-        body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
-        
-        request_data = {
-            'ip': req.remote_addr,
-            'method': req.method,
-            'path': req.full_path,
-            'headers': dict(req.headers),
-            'body': body
-        }
-        
-        return log_entry(request_data)
-        
-    except Exception as e:
-        logger.error(f"Error in log_request: {str(e)}")
-        return False, f"Error processing request: {str(e)}"
+    logger.info(f"\n>>> New Request: {req.method} {req.full_path}")
+    logger.info(f"From IP: {req.remote_addr}")
+
+    headers = dict(req.headers)
+    logger.info(f"Headers: {json.dumps(headers, indent=2)}")
+
+    body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
+
+    log_entry({
+        "type": "REQUEST",
+        "ip": req.remote_addr,
+	@@ -50,31 +84,51 @@ def log_request(req):
+        "body": body
+    })
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def proxy(path):
+    start_time = datetime.now()
+    logger.info(f"\n=== New Request to {path} ===")
+
     try:
-        # Log the request first
-        success, _ = log_request(request)
-        
-        # Forward the request to nginx
+        log_request(request)
+
         resp = requests.request(
             method=request.method,
             url=f"{NGINX_SERVER}/{path}",
@@ -127,20 +98,34 @@ def proxy(path):
             cookies=request.cookies,
             allow_redirects=False
         )
-        
+
         excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
         headers = [(name, value) for (name, value) in resp.raw.headers.items()
                    if name.lower() not in excluded_headers]
-        
-        return Response(resp.content, resp.status_code, headers)
-        
+
+        response = Response(resp.content, resp.status_code, headers)
+
+        # Log response info
+        processing_time = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Request processed in {processing_time:.2f} seconds")
+        logger.info(f"Response status: {resp.status_code}")
+        logger.info("="*50)
+
+        return response
+
     except Exception as e:
-        logger.error(f"Error in proxy route: {str(e)}")
+        logger.error(f"Error processing request: {str(e)}")
+        logger.info("="*50)
         return Response("Internal Server Error", status=500)
 
 if __name__ == '__main__':
+    logger.info("Starting Packet Logger Service")
+    logger.info(f"IDS Server: {IDS_SERVER}:{IDS_PORT}")
+
+    # Ensure the log file exists
     if not os.path.exists(log_file):
         with open(log_file, 'w') as f:
             pass
-    
+        logger.info(f"Created log file: {log_file}")
+
     app.run(host='0.0.0.0', port=5000, debug=False)

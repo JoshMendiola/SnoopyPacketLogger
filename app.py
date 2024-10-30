@@ -34,6 +34,7 @@ ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 def log_entry(data):
     timestamp = datetime.now().isoformat()
     log_data = {
+        "timestamp": timestamp,
         **data
     }
 

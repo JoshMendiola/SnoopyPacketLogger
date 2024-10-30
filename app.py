@@ -77,7 +77,6 @@ def log_request(req):
     log_entry({
         "type": "REQUEST",
         "ip": req.remote_addr,
-	@@ -50,31 +84,51 @@ def log_request(req):
         "body": body
     })
 

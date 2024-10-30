@@ -48,46 +48,12 @@ def format_log_message(injection_detected, message, request_info):
 
 def prepare_headers(headers):
     """Convert headers to string key-value pairs"""
-    return {str(k): str(v) for k, v in headers.items()}
-
-def process_url(url):
-    """Process URL for analysis"""
     try:
-        parsed = urlparse(url)
-        path_components = [comp for comp in parsed.path.split('/') if comp]
-        query_dict = parse_qs(parsed.query)
-        
-        return {
-            "path_components": path_components,
-            "query_params": {k: v[0] if len(v) == 1 else v for k, v in query_dict.items()},
-            "raw_path": parsed.path,
-            "raw_query": parsed.query
-        }
+        # Convert all header values to strings and ensure lowercase keys
+        return {str(k).lower(): str(v) for k, v in headers.items()}
     except Exception as e:
-        logger.error(f"Error processing URL: {str(e)}")
+        logger.error(f"Error preparing headers: {str(e)}")
         return {}
-
-def prepare_analysis_data(data):
-    """Prepare analysis data for IDS server"""
-    try:
-        url_data = process_url(data['path'])
-        
-        analysis_data = {
-            "request": {
-                "method": data['method'],
-                "path": data['path'],
-                "url_analysis": url_data,
-                "headers": prepare_headers(data['headers']),
-                "body": data.get('body', ''),
-                "ip": data['ip'],
-                "timestamp": get_formatted_timestamp()
-            }
-        }
-        
-        return json.dumps(analysis_data)
-    except Exception as e:
-        logger.error(f"Error preparing analysis data: {str(e)}")
-        return json.dumps({})
 
 def log_entry(data):
     try:
@@ -102,21 +68,19 @@ def log_entry(data):
             json.dump(log_data, f)
             f.write('\n')
         
-        # Prepare data for IDS server
-        ids_data = {
-            'timestamp': get_formatted_timestamp(),
-            'type': 'REQUEST',
-            'ip': data['ip'],
-            'method': data['method'],
-            'path': data['path'],
-            'headers': prepare_headers(data['headers']),
-            'body': data.get('body', ''),
-            'client_id': 'packet_logger_1',
-            'analysis_data': prepare_analysis_data(data)  # Include analysis_data
-        }
-        
-        # Send to IDS server
+        # Prepare data exactly according to proto definition
         try:
+            ids_data = {
+                'timestamp': get_formatted_timestamp(),
+                'type': 'REQUEST',
+                'ip': data['ip'],
+                'method': data['method'],
+                'path': data['path'],
+                'headers': prepare_headers(data['headers']),
+                'body': data.get('body', ''),
+                'client_id': 'packet_logger_1'
+            }
+            
             injection_detected, message = ids_client.process_log(ids_data)
             logger.info(format_log_message(injection_detected, message, data))
             return True, message

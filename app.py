@@ -34,7 +34,6 @@ ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 def log_entry(data):
     timestamp = datetime.now().isoformat()
     log_data = {
-        "timestamp": timestamp,
         **data
     }
 
@@ -44,11 +43,6 @@ def log_entry(data):
         f.write('\n')
 
     logger.info("\n=== Sending Log to IDS Server ===")
-    
-    if data.get('body'):
-        logger.info(f"Body Length: {len(data['body'])} characters")
-        # Log first 100 characters of body for visibility
-        logger.info(f"Body Preview: {data['body'][:100]}...")
     
     # Send log to IDS server
     injection_detected, message = ids_client.process_log(log_data)
@@ -60,6 +54,10 @@ def log_entry(data):
         logger.info(f"Method: {data.get('method')}")
         logger.info(f"Path: {data.get('path')}")
         logger.warning(f"IDS Message: {message}")
+        if data.get('body'):
+            logger.info(f"Body Length: {len(data['body'])} characters")
+        # Log first 100 characters of body for visibility
+        logger.info(f"Body Preview: {data['body'][:100]}...")
     else:
         logger.info("\n✅ No injection detected")
         logger.info(f"IDS Message: {message}")
@@ -71,7 +69,6 @@ def log_request(req):
     logger.info(f"From IP: {req.remote_addr}")
     
     headers = dict(req.headers)
-    logger.info(f"Headers: {json.dumps(headers, indent=2)}")
     
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
     

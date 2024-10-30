@@ -10,10 +10,10 @@ import logging
 app = Flask(__name__)
 CORS(app)
 
-# Configure logging
+# Configure logging with a cleaner format
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(message)s',
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler('/var/log/nginx/packet_logger.log')
@@ -21,14 +21,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger('packet_logger')
 
-# Configure JSON logging
 log_file = '/var/log/nginx/packet_logger.json'
-
 NGINX_SERVER = "http://nginx:80"
 IDS_SERVER = os.getenv('IDS_SERVER')
 IDS_PORT = os.getenv('IDS_PORT')
 
-logger.info(f"Initializing IDS client with server {IDS_SERVER}:{IDS_PORT}")
 ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
 def log_entry(data):
@@ -38,39 +35,27 @@ def log_entry(data):
         **data
     }
 
-    # Write the log entry to the JSON file
+    # Write to JSON file
     with open(log_file, 'a') as f:
         json.dump(log_data, f)
         f.write('\n')
-
-    logger.info("\n=== Sending Log to IDS Server ===")
     
-    # Send log to IDS server
+    # Send log to IDS server and get response
     injection_detected, message = ids_client.process_log(log_data)
     
     if injection_detected:
-        logger.warning("\n🚨 ALERT: Potential Injection Detected!")
-        logger.info(f"Timestamp: {timestamp}")
-        logger.info(f"IP: {data.get('ip')}")
-        logger.info(f"Method: {data.get('method')}")
-        logger.info(f"Path: {data.get('path')}")
-        logger.warning(f"IDS Message: {message}")
+        logger.warning("\n🚨 REQUEST SENT TO IDS SERVER AND RESPONSE WAS: " + message)
+        logger.warning("\nRequest Details:")
+        logger.warning(f"Timestamp: {timestamp}")
+        logger.warning(f"IP: {data.get('ip')}")
+        logger.warning(f"Method: {data.get('method')}")
+        logger.warning(f"Path: {data.get('path')}")
         if data.get('body'):
-            logger.info(f"Body Length: {len(data['body'])} characters")
-        # Log first 100 characters of body for visibility
-        logger.info(f"Body Preview: {data['body'][:100]}...")
+            logger.warning(f"Request Body Preview: {data['body'][:100]}...")
     else:
-        logger.info("\n✅ No injection detected")
-        logger.info(f"IDS Message: {message}")
-    
-    logger.info("="*50)  # Separator line
+        logger.info("\n✅ REQUEST SENT TO IDS SERVER AND RESPONSE WAS: " + message)
 
 def log_request(req):
-    logger.info(f"\n>>> New Request: {req.method} {req.full_path}")
-    logger.info(f"From IP: {req.remote_addr}")
-    
-    headers = dict(req.headers)
-    
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
     
     log_entry({
@@ -78,16 +63,13 @@ def log_request(req):
         "ip": req.remote_addr,
         "method": req.method,
         "path": req.full_path,
-        "headers": headers,
+        "headers": dict(req.headers),
         "body": body
     })
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def proxy(path):
-    start_time = datetime.now()
-    logger.info(f"\n=== New Request to {path} ===")
-    
     try:
         log_request(request)
         
@@ -104,29 +86,17 @@ def proxy(path):
         headers = [(name, value) for (name, value) in resp.raw.headers.items()
                    if name.lower() not in excluded_headers]
         
-        response = Response(resp.content, resp.status_code, headers)
-        
-        # Log response info
-        processing_time = (datetime.now() - start_time).total_seconds()
-        logger.info(f"Request processed in {processing_time:.2f} seconds")
-        logger.info(f"Response status: {resp.status_code}")
-        logger.info("="*50)
-        
-        return response
+        return Response(resp.content, resp.status_code, headers)
         
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
-        logger.info("="*50)
         return Response("Internal Server Error", status=500)
 
 if __name__ == '__main__':
     logger.info("Starting Packet Logger Service")
-    logger.info(f"IDS Server: {IDS_SERVER}:{IDS_PORT}")
     
-    # Ensure the log file exists
     if not os.path.exists(log_file):
         with open(log_file, 'w') as f:
             pass
-        logger.info(f"Created log file: {log_file}")
     
     app.run(host='0.0.0.0', port=5000, debug=False)

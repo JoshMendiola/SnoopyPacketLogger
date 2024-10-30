@@ -73,7 +73,7 @@ def log_request(req):
     logger.info(f"Headers: {json.dumps(headers, indent=2)}")
 
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
-    logger.info("FULL PATH\n", req.full_path)
+    logger.info(f"FULL PATH: {req.full_path}")
 
     log_data = {
         "type": "REQUEST",

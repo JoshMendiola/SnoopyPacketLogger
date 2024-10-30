@@ -44,10 +44,6 @@ def log_entry(data):
         f.write('\n')
 
     logger.info("\n=== Sending Log to IDS Server ===")
-    logger.info(f"Timestamp: {timestamp}")
-    logger.info(f"IP: {data.get('ip')}")
-    logger.info(f"Method: {data.get('method')}")
-    logger.info(f"Path: {data.get('path')}")
     
     if data.get('body'):
         logger.info(f"Body Length: {len(data['body'])} characters")
@@ -59,6 +55,10 @@ def log_entry(data):
     
     if injection_detected:
         logger.warning("\n🚨 ALERT: Potential Injection Detected!")
+        logger.info(f"Timestamp: {timestamp}")
+        logger.info(f"IP: {data.get('ip')}")
+        logger.info(f"Method: {data.get('method')}")
+        logger.info(f"Path: {data.get('path')}")
         logger.warning(f"IDS Message: {message}")
     else:
         logger.info("\n✅ No injection detected")

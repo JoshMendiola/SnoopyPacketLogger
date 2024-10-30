@@ -73,12 +73,13 @@ def log_request(req):
     logger.info(f"Headers: {json.dumps(headers, indent=2)}")
 
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
+    logger.info("FULL PATH\n", req.full_path)
 
     log_data = {
         "type": "REQUEST",
         "ip": req.remote_addr,
         "method": req.method,  # Added missing method
-        "path": req.path,      # Added missing path
+        "path": req.full_path, # Added missing path
         "headers": headers,    # Added missing headers
         "body": body
     }

@@ -26,16 +26,13 @@ log_file = '/var/log/nginx/packet_logger.json'
 NGINX_SERVER = "http://nginx:80"
 IDS_SERVER = os.getenv('IDS_SERVER')
 IDS_PORT = os.getenv('IDS_PORT')
+CLIENT_ID = os.getenv('CLIENT_ID', 'packet_logger_1')
 
 ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
 def get_formatted_timestamp():
     """Get current timestamp in ISO format"""
     return datetime.now().isoformat()
-
-def format_log_entry(timestamp, method, path, status_code='-'):
-    """Format timestamp for log entry"""
-    return f"{timestamp} \"{method} {path} HTTP/1.1\" {status_code}"
 
 def format_log_message(ids_response, request_info):
     try:
@@ -46,83 +43,62 @@ def format_log_message(ids_response, request_info):
             status = "✅"
             message = str(ids_response)
 
-        # Format the log entry
-        log_entry = format_log_entry(
-            datetime.now().strftime("[%d/%b/%Y %H:%M:%S]"),
-            request_info.get('method', '-'),
-            request_info.get('path', '-'),
-            request_info.get('status_code', '-')
-        )
+        log_line = f"{request_info.get('ip', '-')} - - " \
+                   f"[{datetime.now().strftime('%d/%b/%Y %H:%M:%S')}] " \
+                   f"\"{request_info.get('method', '-')} {request_info.get('path', '-')} HTTP/1.1\" " \
+                   f"{request_info.get('status_code', '-')} -"
         
-        return f"{status} REQUEST SENT TO IDS SERVER AND RESPONSE WAS: {message}\n" \
-               f"{request_info.get('ip', '-')} - - {log_entry}"
+        return f"{status} REQUEST SENT TO IDS SERVER AND RESPONSE WAS: {message}\n{log_line}"
     except Exception as e:
         logger.error(f"Error formatting log message: {str(e)}")
         return f"Error formatting message: {str(e)}"
 
-def process_url(url):
-    """Extract and process URL components for analysis"""
+def create_log_entry(data):
+    """Create a LogEntry that matches the proto definition exactly"""
     try:
-        parsed = urlparse(url)
-        path_components = [comp for comp in parsed.path.split('/') if comp]
-        query_dict = parse_qs(parsed.query)
-        
-        # Convert query params to simple dict with single values
-        query_params = {k: v[0] if len(v) == 1 else v for k, v in query_dict.items()}
-        
-        return {
-            "path_components": path_components,
-            "query_params": query_params,
-            "raw_path": parsed.path,
-            "raw_query": parsed.query
+        # Convert headers to string dictionary as required by proto
+        headers = {
+            str(k).lower(): str(v) 
+            for k, v in data.get('headers', {}).items()
         }
+        
+        # Create LogEntry exactly matching proto definition
+        return ids_pb2.LogEntry(
+            timestamp=get_formatted_timestamp(),
+            type="REQUEST",
+            ip=data.get('ip', ''),
+            method=data.get('method', ''),
+            path=data.get('path', ''),
+            headers=headers,
+            body=data.get('body', ''),
+            client_id=CLIENT_ID
+        )
     except Exception as e:
-        logger.error(f"Error processing URL: {str(e)}")
-        return {"error": str(e)}
-
-def create_analyzable_headers(headers):
-    """Convert headers to a simple dict for analysis"""
-    return {k.lower(): str(v) for k, v in headers.items()}
+        logger.error(f"Error creating log entry: {str(e)}")
+        raise
 
 def log_entry(data):
     try:
-        # Create a serializable analysis object
-        analysis_data = {
-            "request_time": get_formatted_timestamp(),
-            "method": data['method'],
-            "ip": data['ip'],
-            "url_data": process_url(data['path']),
-            "headers": create_analyzable_headers(data.get('headers', {}))
-        }
-
-        # Add body analysis for POST/PUT/PATCH
-        if data['method'] in ['POST', 'PUT', 'PATCH'] and data.get('body'):
-            try:
-                analysis_data['body'] = json.loads(data['body'])
-            except json.JSONDecodeError:
-                analysis_data['body'] = {"raw_content": data['body']}
-
-        # Create log entry
+        # Create log entry for file
         log_data = {
             "timestamp": get_formatted_timestamp(),
-            **data,
-            "analyzed_data": analysis_data
+            **data
         }
-
+        
         # Write to JSON file
         with open(log_file, 'a') as f:
             json.dump(log_data, f)
             f.write('\n')
         
-        # Prepare data for IDS server
-        ids_data = {
-            "type": "REQUEST",
-            "data": json.dumps(analysis_data)  # Convert analysis data to JSON string
-        }
-        
-        # Send to IDS server
+        # Create and send proto message
         try:
-            response = ids_client.process_log(ids_data)
+            # Create LogEntry message
+            log_entry = create_log_entry(data)
+            
+            # Send to IDS server
+            response = ids_client.process_log(log_entry)
+            
+            # Log the response
             logger.info(format_log_message(response, data))
             return True, response
             
@@ -152,8 +128,7 @@ def log_request(req):
             "method": req.method,
             "path": req.full_path,
             "headers": dict(req.headers),
-            "body": body,
-            "timestamp": get_formatted_timestamp()
+            "body": body
         }
         
         return log_entry(request_data)

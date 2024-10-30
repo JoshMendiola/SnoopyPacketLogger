@@ -26,7 +26,6 @@ log_file = '/var/log/nginx/packet_logger.json'
 NGINX_SERVER = "http://nginx:80"
 IDS_SERVER = os.getenv('IDS_SERVER')
 IDS_PORT = os.getenv('IDS_PORT')
-CLIENT_ID = os.getenv('CLIENT_ID', 'packet_logger_1')
 
 ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
@@ -34,15 +33,9 @@ def get_formatted_timestamp():
     """Get current timestamp in ISO format"""
     return datetime.now().isoformat()
 
-def format_log_message(ids_response, request_info):
+def format_log_message(injection_detected, message, request_info):
     try:
-        if hasattr(ids_response, 'injection_detected'):
-            status = "❌" if ids_response.injection_detected else "✅"
-            message = ids_response.message
-        else:
-            status = "✅"
-            message = str(ids_response)
-
+        status = "❌" if injection_detected else "✅"
         log_line = f"{request_info.get('ip', '-')} - - " \
                    f"[{datetime.now().strftime('%d/%b/%Y %H:%M:%S')}] " \
                    f"\"{request_info.get('method', '-')} {request_info.get('path', '-')} HTTP/1.1\" " \
@@ -53,29 +46,9 @@ def format_log_message(ids_response, request_info):
         logger.error(f"Error formatting log message: {str(e)}")
         return f"Error formatting message: {str(e)}"
 
-def create_log_entry(data):
-    """Create a LogEntry that matches the proto definition exactly"""
-    try:
-        # Convert headers to string dictionary as required by proto
-        headers = {
-            str(k).lower(): str(v) 
-            for k, v in data.get('headers', {}).items()
-        }
-        
-        # Create LogEntry exactly matching proto definition
-        return ids_pb2.LogEntry(
-            timestamp=get_formatted_timestamp(),
-            type="REQUEST",
-            ip=data.get('ip', ''),
-            method=data.get('method', ''),
-            path=data.get('path', ''),
-            headers=headers,
-            body=data.get('body', ''),
-            client_id=CLIENT_ID
-        )
-    except Exception as e:
-        logger.error(f"Error creating log entry: {str(e)}")
-        raise
+def prepare_headers(headers):
+    """Convert headers to string key-value pairs"""
+    return {str(k): str(v) for k, v in headers.items()}
 
 def log_entry(data):
     try:
@@ -90,40 +63,36 @@ def log_entry(data):
             json.dump(log_data, f)
             f.write('\n')
         
-        # Create and send proto message
+        # Prepare data for IDS server
+        ids_data = {
+            "timestamp": get_formatted_timestamp(),
+            "type": "REQUEST",
+            "ip": data.get('ip', ''),
+            "method": data.get('method', ''),
+            "path": data.get('path', ''),
+            "headers": prepare_headers(data.get('headers', {})),
+            "body": data.get('body', '')
+        }
+        
+        # Send to IDS server
         try:
-            # Create LogEntry message
-            log_entry = create_log_entry(data)
-            
-            # Send to IDS server
-            response = ids_client.process_log(log_entry)
-            
-            # Log the response
-            logger.info(format_log_message(response, data))
-            return True, response
+            injection_detected, message = ids_client.process_log(ids_data)
+            logger.info(format_log_message(injection_detected, message, data))
+            return True, message
             
         except Exception as e:
             logger.error(f"Error communicating with IDS server: {str(e)}")
-            return False, ids_pb2.ProcessResult(
-                injection_detected=False,
-                message=f"Error communicating with IDS server: {str(e)}",
-                matched_rules=[]
-            )
+            return False, f"Error communicating with IDS server: {str(e)}"
             
     except Exception as e:
         logger.error(f"Error in log_entry: {str(e)}")
-        return False, ids_pb2.ProcessResult(
-            injection_detected=False,
-            message=f"Error in log processing: {str(e)}",
-            matched_rules=[]
-        )
+        return False, f"Error in log processing: {str(e)}"
 
 def log_request(req):
     try:
         body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
         
         request_data = {
-            "type": "REQUEST",
             "ip": req.remote_addr,
             "method": req.method,
             "path": req.full_path,
@@ -135,11 +104,7 @@ def log_request(req):
         
     except Exception as e:
         logger.error(f"Error in log_request: {str(e)}")
-        return False, ids_pb2.ProcessResult(
-            injection_detected=False,
-            message=f"Error processing request: {str(e)}",
-            matched_rules=[]
-        )
+        return False, f"Error processing request: {str(e)}"
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])

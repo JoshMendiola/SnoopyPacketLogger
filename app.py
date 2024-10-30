@@ -30,21 +30,24 @@ ids_client = IDSClient(IDS_SERVER, IDS_PORT)
 
 def format_log_message(response, request_info):
     status = "✅" if not response.injection_detected else "❌"
+    # Format timestamp in Apache log format
     timestamp = datetime.now().strftime("[%d/%b/%Y %H:%M:%S]")
     ip = request_info.get('ip', '-')
     method = request_info.get('method', '-')
     path = request_info.get('path', '-')
     
+    # Create base message
     msg = f"{status} REQUEST SENT TO IDS SERVER AND RESPONSE WAS: {response.message}\n" \
           f"{ip} - - {timestamp} \"{method} {path} HTTP/1.1\" {request_info.get('status_code', '-')} -"
     
+    # Add details for detected attacks
     if response.injection_detected:
         msg += f"\nRequest Details:\n" \
                f"IP: {ip}\n" \
                f"Method: {method}\n" \
                f"Path: {path}"
         if request_info.get('query_params'):
-            msg += f"\nQuery Parameters: {request_info['query_params']}"
+            msg += f"\nQuery Parameters: {json.dumps(request_info['query_params'], indent=2)}"
     return msg
 
 def process_url(url):
@@ -63,6 +66,9 @@ def process_url(url):
     }
 
 def log_entry(data):
+    # Ensure timestamp is added to data
+    data['timestamp'] = datetime.now().isoformat()
+    
     # Process URL components for GET requests
     if data['method'] == 'GET':
         url_data = process_url(data['path'])
@@ -81,35 +87,54 @@ def log_entry(data):
         except json.JSONDecodeError:
             data['analyzed_data'] = {"raw_body": data.get('body', '')}
 
-    # Write to JSON file
-    with open(log_file, 'a') as f:
-        json.dump(data, f)
-        f.write('\n')
-    
-    # Send log to IDS server
-    injection_detected, response = ids_client.process_log(data)
-    
-    # Log formatted message
-    logger.info(format_log_message(response, data))
+    try:
+        # Write to JSON file
+        with open(log_file, 'a') as f:
+            json.dump(data, f)
+            f.write('\n')
+        
+        # Send log to IDS server and get response
+        injection_detected, response = ids_client.process_log(data)
+        
+        # Log formatted message
+        logger.info(format_log_message(response, data))
+        
+    except Exception as e:
+        logger.error(f"Error in log_entry: {str(e)}")
+        # Return a default response in case of error
+        return False, ids_pb2.ProcessResult(
+            injection_detected=False,
+            message=f"Error processing request: {str(e)}",
+            matched_rules=[]
+        )
 
 def log_request(req):
-    body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
-    
-    log_entry({
-        "type": "REQUEST",
-        "ip": req.remote_addr,
-        "method": req.method,
-        "path": req.full_path,
-        "headers": dict(req.headers),
-        "body": body
-    })
+    try:
+        body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
+        
+        request_data = {
+            "type": "REQUEST",
+            "ip": req.remote_addr,
+            "method": req.method,
+            "path": req.full_path,
+            "headers": dict(req.headers),
+            "body": body,
+            "timestamp": datetime.now().isoformat()  # Ensure timestamp is set here too
+        }
+        
+        log_entry(request_data)
+        
+    except Exception as e:
+        logger.error(f"Error in log_request: {str(e)}")
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 def proxy(path):
     try:
+        # Log the request first
         log_request(request)
         
+        # Forward the request to nginx
         resp = requests.request(
             method=request.method,
             url=f"{NGINX_SERVER}/{path}",
@@ -126,11 +151,12 @@ def proxy(path):
         return Response(resp.content, resp.status_code, headers)
         
     except Exception as e:
-        logger.error(f"Error processing request: {str(e)}")
+        logger.error(f"Error in proxy route: {str(e)}")
         return Response("Internal Server Error", status=500)
 
 if __name__ == '__main__':
     if not os.path.exists(log_file):
         with open(log_file, 'w') as f:
             pass
+    
     app.run(host='0.0.0.0', port=5000, debug=False)

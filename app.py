@@ -1,10 +1,10 @@
 import os
 import json
-from flask import Flask, request, Response
+from flask import Flask, request, Response, jsonify
 import requests
 from datetime import datetime
 from flask_cors import CORS
-from ids_client import IDSClient
+from waf_client import WAFClient
 import logging
 
 app = Flask(__name__)
@@ -25,11 +25,12 @@ logger = logging.getLogger('packet_logger')
 log_file = '/var/log/nginx/packet_logger.json'
 
 NGINX_SERVER = "http://nginx:80"
-IDS_SERVER = os.getenv('IDS_SERVER')
-IDS_PORT = os.getenv('IDS_PORT')
+WAF_SERVER = os.getenv('WAF_SERVER')  # Changed from IDS_SERVER
+WAF_PORT = os.getenv('WAF_PORT')  # Changed from IDS_PORT
 
-logger.info(f"Initializing IDS client with server {IDS_SERVER}:{IDS_PORT}")
-ids_client = IDSClient(IDS_SERVER, IDS_PORT)
+logger.info(f"Initializing WAF client with server {WAF_SERVER}:{WAF_PORT}")
+waf_client = WAFClient(WAF_SERVER, WAF_PORT)  # Changed from ids_client
+
 
 def log_entry(data):
     timestamp = datetime.now().isoformat()
@@ -42,7 +43,7 @@ def log_entry(data):
         json.dump(log_data, f)
         f.write('\n')
 
-        logger.info("\n=== Sending Log to IDS Server ===")
+        logger.info("\n=== Sending Log to WAF Server ===")
         logger.info(f"Timestamp: {timestamp}")
         logger.info(f"IP: {data.get('ip')}")
         logger.info(f"Method: {data.get('method')}")
@@ -53,17 +54,21 @@ def log_entry(data):
         # Log first 100 characters of body for visibility
         logger.info(f"Body Preview: {data['body'][:100]}...")
 
-    # Send log to IDS server
-    attack_detected, message = ids_client.process_log(log_data)
+    # Send log to WAF server
+    attack_detected, message, should_block = waf_client.process_log(log_data)
 
     if attack_detected:
         logger.warning("\n🚨 ALERT: Potential Attack Detected!")
-        logger.warning(f"IDS Message: {message}")
+        logger.warning(f"WAF Message: {message}")
+        if should_block:
+            logger.warning("⛔ Request will be blocked (Prevention Mode Active)")
     else:
         logger.info("\n✅ No Attack detected")
-        logger.info(f"IDS Message: {message}")
+        logger.info(f"WAF Message: {message}")
 
-    logger.info("="*50)  # Separator line
+    logger.info("=" * 50)  # Separator line
+    return attack_detected, message, should_block
+
 
 def log_request(req):
     logger.info(f"\n>>> New Request: {req.method} {req.full_path}")
@@ -78,13 +83,14 @@ def log_request(req):
     log_data = {
         "type": "REQUEST",
         "ip": req.remote_addr,
-        "method": req.method,  # Added missing method
-        "path": req.full_path, # Added missing path
-        "headers": headers,    # Added missing headers
+        "method": req.method,
+        "path": req.full_path,
+        "headers": headers,
         "body": body
     }
 
-    log_entry(log_data)
+    return log_entry(log_data)
+
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
 @app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
@@ -93,7 +99,15 @@ def proxy(path):
     logger.info(f"\n=== New Request to {path} ===")
 
     try:
-        log_request(request)
+        attack_detected, message, should_block = log_request(request)
+
+        if should_block:
+            logger.warning("⛔ Request blocked by WAF")
+            return Response(
+                "Request blocked by WAF",
+                status=403,
+                headers={'X-WAF-Block-Reason': message}
+            )
 
         resp = requests.request(
             method=request.method,
@@ -114,18 +128,41 @@ def proxy(path):
         processing_time = (datetime.now() - start_time).total_seconds()
         logger.info(f"Request processed in {processing_time:.2f} seconds")
         logger.info(f"Response status: {resp.status_code}")
-        logger.info("="*50)
+        logger.info("=" * 50)
 
         return response
 
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
-        logger.info("="*50)
+        logger.info("=" * 50)
         return Response("Internal Server Error", status=500)
+
+
+# Add endpoint for prevention mode control
+@app.route('/api/waf/prevention', methods=['GET', 'POST'])
+def prevention_mode():
+    try:
+        if request.method == 'GET':
+            enabled = waf_client.get_prevention_mode()
+            return jsonify({'prevention_mode': enabled})
+        else:
+            data = request.get_json()
+            if data is None or 'enabled' not in data:
+                return jsonify({'error': 'Missing enabled parameter'}), 400
+
+            success = waf_client.set_prevention_mode(data['enabled'])
+            return jsonify({
+                'prevention_mode': success,
+                'status': 'updated' if success else 'failed'
+            })
+    except Exception as e:
+        logger.error(f"Error handling prevention mode request: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     logger.info("Starting Packet Logger Service")
-    logger.info(f"IDS Server: {IDS_SERVER}:{IDS_PORT}")
+    logger.info(f"WAF Server: {WAF_SERVER}:{WAF_PORT}")
 
     # Ensure the log file exists
     if not os.path.exists(log_file):

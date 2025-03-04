@@ -4,12 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="9ca70254-ee3d-4b6a-886b-22e36f09aaa7" name="Changes" comment="only log requests now, not responses">
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+    <list default="true" id="9ca70254-ee3d-4b6a-886b-22e36f09aaa7" name="Changes" comment="gitignore">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ids.proto" beforeDir="false" afterPath="$PROJECT_DIR$/waf.proto" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ids_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/waf_client.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -142,7 +139,23 @@
       <option name="project" value="LOCAL" />
       <updated>1729188505016</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="Addition of prevention mode&#10;renamed everything to waf instead of ids">
+      <option name="closed" value="true" />
+      <created>1740356009039</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1740356009039</updated>
+    </task>
+    <task id="LOCAL-00009" summary="gitignore">
+      <option name="closed" value="true" />
+      <created>1741131436424</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1741131436424</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -156,6 +169,8 @@
     <MESSAGE value="fix dockerfile for new pathing on server" />
     <MESSAGE value="update logs to be put into a json format" />
     <MESSAGE value="only log requests now, not responses" />
-    <option name="LAST_COMMIT_MESSAGE" value="only log requests now, not responses" />
+    <MESSAGE value="Addition of prevention mode&#10;renamed everything to waf instead of ids" />
+    <MESSAGE value="gitignore" />
+    <option name="LAST_COMMIT_MESSAGE" value="gitignore" />
   </component>
 </project>

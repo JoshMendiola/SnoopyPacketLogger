@@ -103,10 +103,13 @@ def proxy(path):
 
         if should_block:
             logger.warning("⛔ Request blocked by WAF")
+
+            safe_message = message.encode('ascii', 'ignore').decode('ascii')
+
             return Response(
                 "Request blocked by WAF",
                 status=403,
-                headers={'X-WAF-Block-Reason': message}
+                headers={'X-WAF-Block-Reason': safe_message}
             )
 
         resp = requests.request(

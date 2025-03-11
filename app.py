@@ -79,6 +79,7 @@ def log_request(req):
 
     body = req.get_data(as_text=True) if req.method in ['POST', 'PUT', 'PATCH'] else None
     logger.info(f"FULL PATH: {req.full_path}")
+    logger.info(f"THIS IS THE BODY VARIABLE: {body}")
 
     log_data = {
         "type": "REQUEST",
